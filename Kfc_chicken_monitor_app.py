@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, time # Added 'time' import
 
 st.set_page_config(page_title="KFC Crew Efficiency", layout="wide")
 
@@ -30,22 +30,20 @@ def save_data(df):
 
 # --- APP UI ---
 st.title("🍗 KFC Crew & Waste Monitor")
-st.markdown(f"**Nightly Target:** Keep shift waste under **{GOAL_LIMIT} pieces** total.")
 
 # --- 1. DATA ENTRY ---
-with st.expander("📝 Log Shift Details (Adjustable Time)", expanded=True):
+with st.expander("📝 Log Shift Details", expanded=True):
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        # Now fully adjustable for back-logging
         date_entry = st.date_input("Shift Date", datetime.now())
         cook_name = st.selectbox("Who was the Cook?", CREW_MEMBERS)
         week_num = date_entry.isocalendar()[1]
     with col_b:
-        # Time picker now defaults to now, but you can change it to 9:00 PM manually
-        log_time = st.time_input("Time of Final Count", datetime.now().time())
+        # FIX: Defaulting to a static 9:00 PM so it doesn't reset to 'now' on every click
+        log_time = st.time_input("Time of Final Count", value=time(21, 0)) 
         total_cooked = st.number_input("Total OR Pieces Cooked", min_value=0, step=18)
     with col_c:
-        comment = st.text_area("Shift Comments", placeholder="e.g. Rush at 8:30, rain, etc.")
+        comment = st.text_area("Shift Comments", placeholder="e.g. Sudden bus, raining, etc.")
 
     st.write("---")
     st.write("**Waste Counts (Enter pieces found at close):**")
@@ -53,7 +51,8 @@ with st.expander("📝 Log Shift Details (Adjustable Time)", expanded=True):
     waste_inputs = {}
     for i, product in enumerate(PRODUCTS):
         with p_cols[i % 3]:
-            waste_inputs[product] = st.number_input(f"{product}", min_value=0, step=1, key=f"inp_{product}")
+            # Using unique keys for each input to ensure state is maintained
+            waste_inputs[product] = st.number_input(f"{product}", min_value=0, step=1, key=f"fixed_{product}")
 
     if st.button("💾 Save Shift Data", use_container_width=True):
         df = load_data()
@@ -72,12 +71,7 @@ with st.expander("📝 Log Shift Details (Adjustable Time)", expanded=True):
             
         df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
         save_data(df)
-        
-        if total_this_shift <= GOAL_LIMIT:
-            st.balloons()
-            st.success(f"Log Saved for {log_time.strftime('%H:%M')}! Total Waste: {total_this_shift}")
-        else:
-            st.warning(f"Log Saved! Waste was {total_this_shift}. ({total_this_shift - GOAL_LIMIT} over goal)")
+        st.success(f"Shift logged for {log_time.strftime('%H:%M')}! Total Waste: {total_this_shift}")
 
 # --- 2. GRAPHS & LEADERBOARD ---
 st.divider()
@@ -107,7 +101,6 @@ if not df_display.empty:
 
     with tab3:
         st.subheader("Edit/Review Records")
-        # Added a filter by date so you can find old shifts easily
         st.data_editor(df_display, num_rows="dynamic", use_container_width=True)
 
 # --- 3. DOWNLOAD ---
