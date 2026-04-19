@@ -3,13 +3,23 @@ import pandas as pd
 import os
 from datetime import datetime, time
 
-st.set_page_config(page_title="KFC Yield Pro", layout="wide")
+st.set_page_config(page_title="KFC Drop Monitor", layout="wide")
 
 # --- SETTINGS ---
 EXCEL_FILE = 'kfc_master_waste_log.xlsx'
 GOAL_LIMIT = 24
 PRODUCTS = ['Original Recipe', 'Wicked Wings', 'Boneless', 'Original Filets', 'Zingers', 'Tenders']
 CREW_MEMBERS = ['Memphis', 'Anandu', 'Levi', 'Jazz'] 
+
+# Specific cooking increments provided by you
+PRODUCT_STEPS = {
+    'Original Recipe': 18,
+    'Wicked Wings': 20,
+    'Boneless': 20,
+    'Original Filets': 5,
+    'Zingers': 5,
+    'Tenders': 10
+}
 
 def load_data():
     try:
@@ -30,19 +40,14 @@ def save_data(df):
         st.error(f"Error saving to Excel: {e}")
 
 # --- APP UI ---
-st.title("🍗 KFC Full Yield & Waste Monitor")
+st.title("🍗 KFC Unit-Drop & Waste Monitor")
 
 # --- SIDEBAR ADMIN ---
 st.sidebar.header("⚙️ Admin Settings")
-
-# SAFETY CLEAR LOGIC
-st.sidebar.divider()
-st.sidebar.warning("Dangerous Zone")
 confirm_clear = st.sidebar.checkbox("I want to PERMANENTLY clear all shift data")
 if confirm_clear:
     if st.sidebar.button("🚨 WIPE ALL DATA"):
-        # Reset the Excel file to empty columns
-        empty_df = load_data().iloc[0:0] # Keep columns but delete rows
+        empty_df = load_data().iloc[0:0]
         save_data(empty_df)
         st.sidebar.success("Log cleared! Refreshing...")
         st.rerun()
@@ -57,20 +62,23 @@ with st.expander("📝 Log Shift Details", expanded=True):
     with col_b:
         log_time = st.time_input("Time of Final Count", value=time(21, 0))
     with col_c:
-        comment = st.text_area("Shift Comments", placeholder="e.g. Sudden bus, rain, etc.")
+        comment = st.text_area("Shift Comments", placeholder="Notes about the shift...")
 
     st.divider()
-    st.write("**Enter Shift Totals (Cooked & Wasted):**")
+    st.write("**Enter Shift Totals (Increments set to store standards):**")
     cooked_inputs = {}
     waste_inputs = {}
     
     for product in PRODUCTS:
         row_col1, row_col2, row_col3 = st.columns([2, 1, 1])
         with row_col1:
+            # Display the increment rule next to the name for the crew
+            step = PRODUCT_STEPS.get(product, 1)
             st.write(f"### {product}")
+            st.caption(f"Cooked in batches of {step}")
+            
         with row_col2:
-            step_val = 18 if product == 'Original Recipe' else 1
-            cooked_inputs[product] = st.number_input(f"Total Cooked", min_value=0, step=step_val, key=f"c_{product}")
+            cooked_inputs[product] = st.number_input(f"Total Cooked", min_value=0, step=step, key=f"c_{product}")
         with row_col3:
             waste_inputs[product] = st.number_input(f"Total Waste", min_value=0, step=1, key=f"w_{product}")
 
@@ -113,10 +121,15 @@ if not df_display.empty:
         st.subheader("Waste Percentage by Product")
         avg_cooked = df_display[cooked_cols].sum()
         avg_waste = df_display[waste_cols].sum()
-        # Avoid division by zero
-        with pd.option_context('mode.use_inf_as_na', True):
-            yield_data = (avg_waste.values / avg_cooked.values * 100)
-        yield_df = pd.DataFrame(yield_data, index=PRODUCTS, columns=['Waste %'])
+        
+        # Calculate yield while ignoring zero-cook items to prevent errors
+        yield_results = []
+        for p in PRODUCTS:
+            c = avg_cooked[f'{p}_Cooked']
+            w = avg_waste[f'{p}_Waste']
+            yield_results.append((w / c * 100) if c > 0 else 0)
+            
+        yield_df = pd.DataFrame(yield_results, index=PRODUCTS, columns=['Waste %'])
         st.bar_chart(yield_df)
 
     with tab2:
