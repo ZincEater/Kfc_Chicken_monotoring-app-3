@@ -140,7 +140,7 @@ if not df_master.empty:
         st.data_editor(df_master, use_container_width=True, num_rows="dynamic")
 
         # SECOND EXPORT BUTTON AT BOTTOM
-     st.divider()
+st.divider()
      with open(EXCEL_FILE, "rb") as f:
         st.download_button(
             label="📥 Download Detailed Excel for AGM/RGM",
