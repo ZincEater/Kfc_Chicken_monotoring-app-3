@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime, time
 
-st.set_page_config(page_title="KFC Full Yield Tracker", layout="wide")
+st.set_page_config(page_title="KFC Yield Pro", layout="wide")
 
 # --- SETTINGS ---
 EXCEL_FILE = 'kfc_master_waste_log.xlsx'
@@ -15,7 +15,6 @@ def load_data():
     try:
         if os.path.exists(EXCEL_FILE):
             return pd.read_excel(EXCEL_FILE, engine='openpyxl')
-        # Dynamic column creation: Cooked and Waste for every product
         cols = ['Date', 'Week_Number', 'Time', 'Cook_Name'] + \
                [f'{p}_Cooked' for p in PRODUCTS] + \
                [f'{p}_Waste' for p in PRODUCTS] + ['Comments']
@@ -33,8 +32,23 @@ def save_data(df):
 # --- APP UI ---
 st.title("🍗 KFC Full Yield & Waste Monitor")
 
+# --- SIDEBAR ADMIN ---
+st.sidebar.header("⚙️ Admin Settings")
+
+# SAFETY CLEAR LOGIC
+st.sidebar.divider()
+st.sidebar.warning("Dangerous Zone")
+confirm_clear = st.sidebar.checkbox("I want to PERMANENTLY clear all shift data")
+if confirm_clear:
+    if st.sidebar.button("🚨 WIPE ALL DATA"):
+        # Reset the Excel file to empty columns
+        empty_df = load_data().iloc[0:0] # Keep columns but delete rows
+        save_data(empty_df)
+        st.sidebar.success("Log cleared! Refreshing...")
+        st.rerun()
+
 # --- 1. DATA ENTRY ---
-with st.expander("📝 Log Shift Details (Cooked & Wasted)", expanded=True):
+with st.expander("📝 Log Shift Details", expanded=True):
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         date_entry = st.date_input("Shift Date", datetime.now())
@@ -46,19 +60,15 @@ with st.expander("📝 Log Shift Details (Cooked & Wasted)", expanded=True):
         comment = st.text_area("Shift Comments", placeholder="e.g. Sudden bus, rain, etc.")
 
     st.divider()
-    
-    # Entry Grid
-    st.write("**Enter Shift Totals:**")
+    st.write("**Enter Shift Totals (Cooked & Wasted):**")
     cooked_inputs = {}
     waste_inputs = {}
     
-    # Create a cleaner layout: One row per product with Cooked and Waste side-by-side
     for product in PRODUCTS:
         row_col1, row_col2, row_col3 = st.columns([2, 1, 1])
         with row_col1:
             st.write(f"### {product}")
         with row_col2:
-            # Step size 18 for Original Recipe, 1 for others
             step_val = 18 if product == 'Original Recipe' else 1
             cooked_inputs[product] = st.number_input(f"Total Cooked", min_value=0, step=step_val, key=f"c_{product}")
         with row_col3:
@@ -75,7 +85,6 @@ with st.expander("📝 Log Shift Details (Cooked & Wasted)", expanded=True):
             'Cook_Name': cook_name,
             'Comments': comment
         }
-        # Map Cooked and Waste values
         for p in PRODUCTS:
             new_entry[f'{p}_Cooked'] = cooked_inputs[p]
             new_entry[f'{p}_Waste'] = waste_inputs[p]
@@ -102,12 +111,11 @@ if not df_display.empty:
         st.line_chart(line_data.set_index('Date'))
         
         st.subheader("Waste Percentage by Product")
-        # Calculate waste % for each product
         avg_cooked = df_display[cooked_cols].sum()
         avg_waste = df_display[waste_cols].sum()
-        
         # Avoid division by zero
-        yield_data = (avg_waste.values / avg_cooked.values * 100)
+        with pd.option_context('mode.use_inf_as_na', True):
+            yield_data = (avg_waste.values / avg_cooked.values * 100)
         yield_df = pd.DataFrame(yield_data, index=PRODUCTS, columns=['Waste %'])
         st.bar_chart(yield_df)
 
