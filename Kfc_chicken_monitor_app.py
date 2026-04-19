@@ -33,27 +33,29 @@ st.title("🍗 KFC Crew & Waste Monitor")
 st.markdown(f"**Nightly Target:** Keep shift waste under **{GOAL_LIMIT} pieces** total.")
 
 # --- 1. DATA ENTRY ---
-with st.expander("📝 Log End-of-Shift Details", expanded=True):
+with st.expander("📝 Log Shift Details (Adjustable Time)", expanded=True):
     col_a, col_b, col_c = st.columns(3)
     with col_a:
+        # Now fully adjustable for back-logging
         date_entry = st.date_input("Shift Date", datetime.now())
         cook_name = st.selectbox("Who was the Cook?", CREW_MEMBERS)
         week_num = date_entry.isocalendar()[1]
     with col_b:
-        log_time = st.time_input("Log Time", datetime.now().time())
+        # Time picker now defaults to now, but you can change it to 9:00 PM manually
+        log_time = st.time_input("Time of Final Count", datetime.now().time())
         total_cooked = st.number_input("Total OR Pieces Cooked", min_value=0, step=18)
     with col_c:
-        comment = st.text_area("Shift Comments", placeholder="e.g. Sudden bus, raining, etc.")
+        comment = st.text_area("Shift Comments", placeholder="e.g. Rush at 8:30, rain, etc.")
 
     st.write("---")
-    st.write("**Waste Counts (Pieces):**")
+    st.write("**Waste Counts (Enter pieces found at close):**")
     p_cols = st.columns(3)
     waste_inputs = {}
     for i, product in enumerate(PRODUCTS):
         with p_cols[i % 3]:
-            waste_inputs[product] = st.number_input(f"{product}", min_value=0, step=1, key=f"input_{product}")
+            waste_inputs[product] = st.number_input(f"{product}", min_value=0, step=1, key=f"inp_{product}")
 
-    if st.button("💾 Save Shift to Master Log", use_container_width=True):
+    if st.button("💾 Save Shift Data", use_container_width=True):
         df = load_data()
         total_this_shift = sum(waste_inputs.values())
         
@@ -73,9 +75,9 @@ with st.expander("📝 Log End-of-Shift Details", expanded=True):
         
         if total_this_shift <= GOAL_LIMIT:
             st.balloons()
-            st.success(f"Nice work, {cook_name}! Only {total_this_shift} pieces wasted.")
+            st.success(f"Log Saved for {log_time.strftime('%H:%M')}! Total Waste: {total_this_shift}")
         else:
-            st.warning(f"Total waste: {total_this_shift}. Let's watch the 7:30pm drop tomorrow.")
+            st.warning(f"Log Saved! Waste was {total_this_shift}. ({total_this_shift - GOAL_LIMIT} over goal)")
 
 # --- 2. GRAPHS & LEADERBOARD ---
 st.divider()
@@ -85,16 +87,15 @@ if not df_display.empty:
     waste_cols = [f'{p}_Waste' for p in PRODUCTS]
     df_display['Total_Waste'] = df_display[waste_cols].sum(axis=1)
 
-    # Analytics Tabs
     tab1, tab2, tab3 = st.tabs(["📉 Efficiency Graphs", "🏆 Cook Leaderboard", "🗄️ Master Data"])
 
     with tab1:
-        st.subheader("Daily Waste vs. 24-Piece Goal")
+        st.subheader("Daily Waste Trend")
         line_data = df_display.groupby('Date')['Total_Waste'].sum().reset_index()
         line_data['Goal'] = GOAL_LIMIT
         st.line_chart(line_data.set_index('Date'))
         
-        st.subheader("Product Waste Breakdown")
+        st.subheader("Product Breakdown")
         product_totals = df_display[waste_cols].sum()
         product_totals.index = [p.replace('_Waste', '') for p in product_totals.index]
         st.bar_chart(product_totals)
@@ -103,18 +104,18 @@ if not df_display.empty:
         st.subheader("Average Waste per Cook")
         cook_stats = df_display.groupby('Cook_Name')['Total_Waste'].mean().sort_values()
         st.bar_chart(cook_stats)
-        st.info("The shorter the bar, the more efficient the cook.")
 
     with tab3:
-        st.subheader("All Shift Records")
+        st.subheader("Edit/Review Records")
+        # Added a filter by date so you can find old shifts easily
         st.data_editor(df_display, num_rows="dynamic", use_container_width=True)
 
-# --- 3. DOWNLOAD FOR RGM ---
+# --- 3. DOWNLOAD ---
 if not df_display.empty:
     with open(EXCEL_FILE, "rb") as f:
         st.sidebar.download_button(
-            label="📥 Download Excel for RGM",
+            label="📥 Download Excel Report",
             data=f,
-            file_name=f"KFC_Master_Log_{datetime.now().date()}.xlsx",
+            file_name=f"KFC_Waste_Report_{datetime.now().date()}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
