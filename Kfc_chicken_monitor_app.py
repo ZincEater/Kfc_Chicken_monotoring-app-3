@@ -134,4 +134,18 @@ if not df_master.empty:
 
     with tab2:
         st.subheader("Avg Waste per Cook")
-        st.bar_chart(df_master.groupby
+        st.bar_chart(df_master.groupby)
+    with tab3:
+        st.subheader("Review/Edit Data")
+        st.data_editor(df_master, use_container_width=True, num_rows="dynamic")
+
+        # SECOND EXPORT BUTTON AT BOTTOM
+     st.divider()
+     with open(EXCEL_FILE, "rb") as f:
+        st.download_button(
+            label="📥 Download Detailed Excel for AGM/RGM",
+            data=f,
+            file_name=f"KFC_Full_Report_{datetime.now().date()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
