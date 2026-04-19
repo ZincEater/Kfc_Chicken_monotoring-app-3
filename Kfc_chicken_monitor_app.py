@@ -1,46 +1,66 @@
 import streamlit as st
+import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="KFC Shift Pro", layout="centered")
+st.set_page_config(page_title="KFC Shift Monitor", layout="centered")
 
-st.title("🍗 KFC Shift Manager")
-st.subheader("Waste Reduction & Drop Tracker")
+# --- DATABASE LOGIC ---
+# This keeps your data alive during the session
+if 'history' not in st.session_state:
+    st.session_state.history = pd.DataFrame(columns=['Time', 'On_Hand', 'Action'])
 
-# 1. Current Stats
+st.title("🍗 KFC Shift Monitor")
+st.markdown("### Manage Chicken & Edit History")
+
+# --- 1. ENTRY SECTION ---
+with st.container():
+    st.subheader("Current Status")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        current_count = st.number_input("How many OR pieces now?", min_value=0, step=1)
+    with col2:
+        # Defaults to current time, but you can adjust it if you're logging late
+        entry_time = st.time_input("Log Time", datetime.now().time())
+
+    if st.button("➕ Add Entry", use_container_width=True):
+        new_entry = {
+            'Time': entry_time.strftime("%H:%M"),
+            'On_Hand': current_count,
+            'Action': "Checked"
+        }
+        # Add new data to the session state
+        st.session_state.history = pd.concat([
+            st.session_state.history, 
+            pd.DataFrame([new_entry])
+        ], ignore_index=True)
+        st.success(f"Logged {current_count} pieces for {entry_time.strftime('%H:%M')}")
+
+# --- 2. EDIT / ADJUST HISTORY ---
 st.divider()
-col1, col2 = st.columns(2)
+st.subheader("📊 Shift History & Adjustments")
 
-with col1:
-    on_hand = st.number_input("Current OR Pieces", min_value=0, step=1)
-with col2:
-    time_now = datetime.now().strftime("%H:%M")
-    st.metric("Current Time", time_now)
+if not st.session_state.history.empty:
+    # We use st.data_editor to let you change numbers directly in the table!
+    edited_df = st.data_editor(
+        st.session_state.history,
+        num_rows="dynamic", # This allows you to delete rows by selecting them
+        use_container_width=True,
+        key="history_editor"
+    )
+    
+    # Update the master history if you changed something in the table
+    st.session_state.history = edited_df
 
-# 2. Decision Logic (The "Should I Drop?" Engine)
-st.header("Drop Recommendation")
-target_pieces = 20 # You can adjust this based on your store's average late-night sales
-
-if on_hand >= target_pieces:
-    st.success("✅ DO NOT DROP. You have enough to cover the window.")
+    st.info("💡 You can click any cell above to change the time or count. Use the checkbox on the left to delete a row.")
 else:
-    needed = target_pieces - on_hand
-    st.warning(f"⚠️ LOW STOCK. You need approx {needed} more pieces.")
-    st.info("Reminder: Minimum drop is 2-Head (18 pieces).")
+    st.write("No data logged for this shift yet.")
 
-# 3. Quick Log (Saves to a local CSV or just displays)
-st.divider()
-st.header("End of Night Log")
-waste_count = st.number_input("Pieces Wasted at 9:00 PM", min_value=0, step=1)
+# --- 3. RECAP FOR RGM ---
+if st.sidebar.button("🗑️ Clear Shift (New Day)"):
+    st.session_state.history = pd.DataFrame(columns=['Time', 'On_Hand', 'Action'])
+    st.rerun()
 
-if st.button("Log Shift Data"):
-    # In a full app, you'd append this to a database or Google Sheet
-    st.write(f"Logged: {datetime.now().date()} | Waste: {waste_count} pieces")
-    if waste_count > 30:
-        st.error("High Waste Alert: Adjust the 7:25 PM drop for this day next week!")
-    else:
-        st.balloons()
-        st.success("Great shift! Efficiency is up.")
-
-# 4. Peer-to-Peer "Friend" Mode
-st.sidebar.markdown("### 📋 Supervisor Notes")
-st.sidebar.info("If it's past 7:30 PM, the kitchen is CLOSED. Pivot customers to Burgers/Zingers.")
+st.sidebar.markdown("---")
+st.sidebar.write(f"**Supervisor:** You")
+st.sidebar.write("**Store Status:** Kitchen Closes @ 7:30 PM")
