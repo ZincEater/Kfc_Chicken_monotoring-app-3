@@ -10,7 +10,7 @@ EXCEL_FILE = 'kfc_crew_waste_log.xlsx'
 GOAL_LIMIT = 24
 PRODUCTS = ['Original Recipe', 'Wicked Wings', 'Boneless', 'Original Filets', 'Zingers', 'Tenders']
 # You can update this list with your actual crew names
-CREW_MEMBERS = ['Self', 'Cook A', 'Cook B', 'Cook C'] 
+CREW_MEMBERS = ['Memphis', 'Levi', 'Anandu', 'Jazz'] 
 
 def load_data():
     if os.path.exists(EXCEL_FILE):
