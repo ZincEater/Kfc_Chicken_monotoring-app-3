@@ -1,66 +1,86 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
 
-st.set_page_config(page_title="KFC Shift Monitor", layout="centered")
+st.set_page_config(page_title="KFC Waste Tracker Pro", layout="centered")
 
-# --- DATABASE LOGIC ---
-# This keeps your data alive during the session
-if 'history' not in st.session_state:
-    st.session_state.history = pd.DataFrame(columns=['Time', 'On_Hand', 'Action'])
+# --- EXCEL DATABASE LOGIC ---
+EXCEL_FILE = 'kfc_weekly_data.xlsx'
+GOAL_LIMIT = 24
 
-st.title("🍗 KFC Shift Monitor")
-st.markdown("### Manage Chicken & Edit History")
+def load_data():
+    if os.path.exists(EXCEL_FILE):
+        return pd.read_excel(EXCEL_FILE)
+    return pd.DataFrame(columns=['Date', 'Time', 'Cooked_Pieces', 'Wasted_Pieces'])
 
-# --- 1. ENTRY SECTION ---
-with st.container():
-    st.subheader("Current Status")
+def save_data(df):
+    df.to_excel(EXCEL_FILE, index=False)
+
+# --- APP UI ---
+st.title("🍗 KFC Efficiency Tracker")
+st.markdown(f"**Target:** Keep nightly waste below **{GOAL_LIMIT} pieces**")
+
+# --- 1. DATA ENTRY ---
+with st.container(border=True):
     col1, col2 = st.columns(2)
-    
     with col1:
-        current_count = st.number_input("How many OR pieces now?", min_value=0, step=1)
+        date_entry = st.date_input("Shift Date", datetime.now())
+        # Step=18 matches your 2-head minimum requirement
+        cooked = st.number_input("Total Cooked (Pieces)", min_value=0, step=18) 
     with col2:
-        # Defaults to current time, but you can adjust it if you're logging late
-        entry_time = st.time_input("Log Time", datetime.now().time())
+        time_entry = st.time_input("Log Time", datetime.now().time())
+        wasted = st.number_input("Total Wasted (Pieces)", min_value=0, step=1)
 
-    if st.button("➕ Add Entry", use_container_width=True):
-        new_entry = {
-            'Time': entry_time.strftime("%H:%M"),
-            'On_Hand': current_count,
-            'Action': "Checked"
-        }
-        # Add new data to the session state
-        st.session_state.history = pd.concat([
-            st.session_state.history, 
-            pd.DataFrame([new_entry])
-        ], ignore_index=True)
-        st.success(f"Logged {current_count} pieces for {entry_time.strftime('%H:%M')}")
+    if st.button("💾 Log Shift to Excel", use_container_width=True):
+        df = load_data()
+        new_row = pd.DataFrame([{
+            'Date': date_entry.strftime("%Y-%m-%d"),
+            'Time': time_entry.strftime("%H:%M"),
+            'Cooked_Pieces': cooked,
+            'Wasted_Pieces': wasted
+        }])
+        df = pd.concat([df, new_row], ignore_index=True)
+        save_data(df)
+        
+        # Immediate Feedback
+        if wasted <= GOAL_LIMIT:
+            st.balloons()
+            st.success(f"Nice work! Waste was {wasted}, which is under the {GOAL_LIMIT} goal.")
+        else:
+            st.error(f"Waste was {wasted}. That's {wasted - GOAL_LIMIT} over the limit. Check the 7:30pm drop next time.")
 
-# --- 2. EDIT / ADJUST HISTORY ---
+# --- 2. THE CHART WITH GOAL LINE ---
 st.divider()
-st.subheader("📊 Shift History & Adjustments")
+st.subheader("📊 Weekly Performance vs Goal")
 
-if not st.session_state.history.empty:
-    # We use st.data_editor to let you change numbers directly in the table!
-    edited_df = st.data_editor(
-        st.session_state.history,
-        num_rows="dynamic", # This allows you to delete rows by selecting them
-        use_container_width=True,
-        key="history_editor"
-    )
+df_display = load_data()
+
+if not df_display.empty:
+    # Prepare data for the chart
+    chart_data = df_display.groupby('Date')[['Wasted_Pieces']].sum().reset_index()
+    chart_data['Goal'] = GOAL_LIMIT # Adds the flat 24-piece line
     
-    # Update the master history if you changed something in the table
-    st.session_state.history = edited_df
-
-    st.info("💡 You can click any cell above to change the time or count. Use the checkbox on the left to delete a row.")
+    # Using Streamlit's line chart
+    # It will show 'Wasted_Pieces' and a flat 'Goal' line at 24
+    st.line_chart(chart_data.set_index('Date'))
+    
+    # Show history for easy adjustments
+    st.subheader("📝 Edit Excel Records")
+    edited_df = st.data_editor(df_display, num_rows="dynamic", use_container_width=True)
+    
+    if st.button("Confirm Changes"):
+        save_data(edited_df)
+        st.toast("Excel file updated!")
 else:
-    st.write("No data logged for this shift yet.")
+    st.info("No data in the Excel log yet.")
 
-# --- 3. RECAP FOR RGM ---
-if st.sidebar.button("🗑️ Clear Shift (New Day)"):
-    st.session_state.history = pd.DataFrame(columns=['Time', 'On_Hand', 'Action'])
-    st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.write(f"**Supervisor:** You")
-st.sidebar.write("**Store Status:** Kitchen Closes @ 7:30 PM")
+# --- 3. DOWNLOAD FOR RGM ---
+if not df_display.empty:
+    with open(EXCEL_FILE, "rb") as f:
+        st.sidebar.download_button(
+            label="Excel 📥 Download for RGM",
+            data=f,
+            file_name=f"KFC_Waste_Report_{datetime.now().date()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
